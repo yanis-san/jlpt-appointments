@@ -143,6 +143,10 @@ translations = {
     }
 }
 
+# Au début du fichier, définir le chemin du logo
+STATIC_DIR = os.path.join(os.path.dirname(__file__), 'static')
+LOGO_PATH = os.path.join(STATIC_DIR, 'images', 'logo_horizontal.png')
+
 def initialize_mysql_database():
     try:
         connection = get_db_connection()
@@ -360,10 +364,9 @@ def generate_appointment_pdf(data, lang):
     c.rect(0, 0, width, height, fill=True)
 
     # Logo
-    logo_path = "logo_horizontal.png"
-    img = ImageReader(logo_path)
-    logo_width = 10*cm
-    logo_height = 2.5*cm  # Réduit un peu la hauteur
+    img = ImageReader(LOGO_PATH)
+    logo_width = 9*cm
+    logo_height = 2.5*cm
     x = (width - logo_width) / 2
     y_logo = height - 3*cm
     c.drawImage(img, x, y_logo, width=logo_width, height=logo_height, mask='auto')
