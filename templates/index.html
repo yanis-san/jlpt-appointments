@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ 'rtl' if lang == 'ar' else 'ltr' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JLPT</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/css/intlTelInput.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/intlTelInput.min.js"></script>
+    <style>
+        .iti { width: 100%; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {}
+            },
+            variants: {
+                extend: {
+                    backgroundColor: ['checked', 'peer-checked'],
+                    textColor: ['checked', 'peer-checked']
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-white">
+    <div class="container mx-auto px-4 py-8">
+        {% include 'language_buttons.html' %}
+
+        <div id="main-content">
+            {% include 'content.html' %}
+        </div>
+    </div>
+    <script>
+        // Fonction d'initialisation du téléphone
+        function initPhoneInputs() {
+            var inputs = document.querySelectorAll('input[type="tel"]');
+            inputs.forEach(function(input) {
+                // Détruire l'instance précédente si elle existe
+                if (input.iti) {
+                    input.iti.destroy();
+                }
+                // Créer une nouvelle instance
+                input.iti = window.intlTelInput(input, {
+                    initialCountry: "dz",
+                    preferredCountries: ["dz", "fr", "jp"],
+                    separateDialCode: true,
+                    utilsScript: "https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/utils.js",
+                });
+            });
+        }
+
+        // Initialisation au chargement de la page
+        document.addEventListener('DOMContentLoaded', initPhoneInputs);
+
+        // Initialisation après chaque mise à jour HTMX
+        htmx.on('htmx:load', function(evt) {
+            initPhoneInputs();
+        });
+
+        // Intercepter la requête HTMX avant l'envoi
+        htmx.on('htmx:configRequest', function(evt) {
+            var phoneInput = document.querySelector('input[type="tel"]');
+            if (phoneInput && phoneInput.iti) {
+                // Récupérer la valeur actuelle
+                let number = phoneInput.value;
+                // Enlever le 0 initial si présent
+                number = number.replace(/^0+/, '');
+                // Obtenir le numéro complet avec l'indicatif
+                var fullNumber = phoneInput.iti.getNumber(intlTelInputUtils.numberFormat.E164);
+                // Mettre à jour les paramètres de la requête
+                evt.detail.parameters.phone = fullNumber;
+            }
+        });
+    </script>
+</body>
+</html> 
