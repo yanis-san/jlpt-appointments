@@ -1,3 +1,10 @@
+<!-- Ajout de debug -->
+{% if slots %}
+    <div>Nombre de slots : {{ slots|length }}</div>
+{% else %}
+    <div>Aucun slot disponible</div>
+{% endif %}
+
 <div>
     <label class="block text-gray-700 mb-2">{{ t.timeSlot }}</label>
     <div class="grid grid-cols-4 gap-2">

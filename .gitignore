@@ -6,6 +6,5 @@ confirmation_rdv.pdf
 .venv/
 .pytest_cache/
 README_tmp.html
-readme.md
 .env.test
 

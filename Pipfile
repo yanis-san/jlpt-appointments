@@ -16,6 +16,7 @@ pytest = "*"
 pytest-mock = "*"
 pytest-cov = "*"
 flask-wtf = "*"
+pymysql = "*"
 
 [dev-packages]
 

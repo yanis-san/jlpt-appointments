@@ -11,9 +11,9 @@ import qrcode
 from io import BytesIO
 import os
 from reportlab.lib.utils import ImageReader
-from supabase import create_client
 from dotenv import load_dotenv
 from flask_wtf.csrf import CSRFProtect
+import pymysql.cursors
 
 app = Flask(__name__)
 CORS(app)
@@ -30,14 +30,20 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
 mail = Mail(app)
+csrf = CSRFProtect(app)
 
-# Configuration Supabase
-supabase_url = os.getenv('SUPABASE_URL')
-supabase_key = os.getenv('SUPABASE_KEY')
-supabase_client = create_client(supabase_url, supabase_key)
+# Configuration MySQL
+def get_db_connection():
+    return pymysql.connect(
+        host=os.getenv('MYSQL_HOST'),
+        user=os.getenv('MYSQL_USER'),
+        password=os.getenv('MYSQL_PASSWORD'),
+        database=os.getenv('MYSQL_DATABASE'),
+        charset='utf8mb4',
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
-csrf = CSRFProtect(app)  # Activer la protection CSRF
-
+# Ajouter les translations après la configuration MySQL
 translations = {
     'fr': {
         'title': "Prise de rendez-vous pour l'inscription à l'examen JLPT",
@@ -75,16 +81,16 @@ translations = {
         'confirm': "Confirm Appointment",
         'success': "Appointment successfully registered",
         'error': "Please fill all fields correctly",
+        'verification_title': "Email verification",
+        'verification_message': "A verification code has been sent to your email address. Please enter it below.",
+        'verify_code': "Verify code",
+        'already_booked': "This email address already has an appointment",
+        'session_expired': "Session expired",
+        'code_expired': "Code expired",
+        'invalid_code': "Invalid code",
         'email_subject': "JLPT Verification Code",
         'email_body': "Your verification code for JLPT appointment is: {code}\n\nThis code is valid for 10 minutes.",
         'email_error': "Error sending email. Please try again.",
-        'verification_title': "Vérification de l'email",
-        'verification_message': "Un code de vérification a été envoyé à votre adresse email. Veuillez le saisir ci-dessous.",
-        'verify_code': "Vérifier le code",
-        'already_booked': "Cette adresse email a déjà un rendez-vous",
-        'session_expired': "Session expirée",
-        'code_expired': "Code expiré",
-        'invalid_code': "Code incorrect",
         'redirecting': "Redirecting in 3 seconds...",
     },
     'ja': {
@@ -99,91 +105,149 @@ translations = {
         'confirm': "予約を確認する",
         'success': "予約が完了しました",
         'error': "すべての項目を正しく入力してください",
-        'email_subject': "あなたのJLPT検定確認コード",
-        'email_body': "ここにあなたのJLPT検定確認コードがあります: {code}",
-        'email_error': "メール送信エラー",
-        'verification_title': "Vérification de l'email",
-        'verification_message': "Un code de vérification a été envoyé à votre adresse email. Veuillez le saisir ci-dessous.",
-        'verify_code': "Vérifier le code",
-        'already_booked': "Cette adresse email a déjà un rendez-vous",
-        'session_expired': "Session expirée",
-        'code_expired': "Code expiré",
-        'invalid_code': "Code incorrect",
+        'verification_title': "メール認証",
+        'verification_message': "認証コードをメールで送信しました。下記に入力してください。",
+        'verify_code': "コードを確認",
+        'already_booked': "このメールアドレスは既に予約済みです",
+        'session_expired': "セッションが切れました",
+        'code_expired': "コードの有効期限が切れました",
+        'invalid_code': "無効なコード",
+        'email_subject': "JLPT認証コード",
+        'email_body': "JLPTの予約認証コード: {code}\n\nこのコードは10分間有効です。",
+        'email_error': "メール送信エラー。もう一度お試しください。",
         'redirecting': "3秒後にリダイレクトします...",
     },
     'ar': {
-        'title': "JLPT حجز موعد للتسجيل في اختبار",
+        'title': "حجز موعد لتسجيل اختبار JLPT",
         'date': "التاريخ",
-        'timeSlot': "الموعد",
+        'timeSlot': "الوقت",
         'fullName': "الاسم الكامل",
-        'phone': "رقم الهاتف",
+        'phone': "الهاتف",
         'email': "البريد الإلكتروني",
         'jlptLevel': "مستوى JLPT",
         'selectLevel': "اختر المستوى",
         'confirm': "تأكيد الموعد",
         'success': "تم تسجيل الموعد بنجاح",
         'error': "يرجى ملء جميع الحقول بشكل صحيح",
-        'email_subject': "رمز التحقق من JLPT",
-        'email_body': "هنا رمز التحقق من JLPT: {code}",
-        'email_error': "خطأ عند إرسال البريد الإلكتروني",
-        'verification_title': "Vérification de l'email",
-        'verification_message': "Un code de vérification a été envoyé إلى عنوان بريدك الإلكتروني. يرجى إدخاله أدناه.",
-        'verify_code': "Vérifier le code",
-        'already_booked': "Cette adresse email a déjà un rendez-vous",
-        'session_expired': "Session expirée",
-        'code_expired': "Code expiré",
-        'invalid_code': "Code incorrect",
-        'redirecting': "...إعادة توجيه في 3 ثوان",
+        'verification_title': "التحقق من البريد الإلكتروني",
+        'verification_message': "تم إرسال رمز التحقق إلى بريدك الإلكتروني. يرجى إدخاله أدناه.",
+        'verify_code': "التحقق من الرمز",
+        'already_booked': "هذا البريد الإلكتروني لديه موعد بالفعل",
+        'session_expired': "انتهت الجلسة",
+        'code_expired': "انتهت صلاحية الرمز",
+        'invalid_code': "رمز غير صالح",
+        'email_subject': "رمز التحقق JLPT",
+        'email_body': "رمز التحقق الخاص بموعد JLPT هو: {code}\n\nهذا الرمز صالح لمدة 10 دقائق.",
+        'email_error': "خطأ في إرسال البريد الإلكتروني. يرجى المحاولة مرة أخرى.",
+        'redirecting': "إعادة توجيه في 3 ثوان...",
     }
 }
 
-def initialize_supabase_slots():
+def initialize_mysql_database():
     try:
-        # Supprimer tous les slots existants
-        supabase_client.table('slots').delete().neq('id', 0).execute()
-        
-        start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        end_date = datetime(2025, 3, 25)
-        
-        slots_to_insert = []
-        current_date = start_date
-        
-        while current_date <= end_date:
-            if (current_date >= datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) 
-                and current_date.weekday() != 6):  # Pas de dimanches
-                current_time = datetime.strptime(f"{current_date.strftime('%Y-%m-%d')} 09:30", "%Y-%m-%d %H:%M")
-                end_time = datetime.strptime(f"{current_date.strftime('%Y-%m-%d')} 16:30", "%Y-%m-%d %H:%M")
-                
-                while current_time <= end_time:
-                    slots_to_insert.append({
-                        'date': current_time.strftime("%Y-%m-%d"),
-                        'time': current_time.strftime("%H:%M"),
-                        'available': True
-                    })
-                    current_time += timedelta(minutes=30)
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Créer la table slots si elle n'existe pas
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS slots (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    date DATE NOT NULL,
+                    time TIME NOT NULL,
+                    available BOOLEAN DEFAULT TRUE,
+                    INDEX idx_date_time (date, time)
+                )
+            ''')
             
-            current_date += timedelta(days=1)
-        
-        # Insérer les slots par lots de 1000
-        for i in range(0, len(slots_to_insert), 1000):
-            batch = slots_to_insert[i:i+1000]
-            supabase_client.table('slots').insert(batch).execute()
-        
-        print("Base de données Supabase initialisée avec succès")
+            # Créer la table appointments si elle n'existe pas
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS appointments (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    date DATE NOT NULL,
+                    time TIME NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    phone VARCHAR(50) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    jlpt_level VARCHAR(2) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_email (email)
+                )
+            ''')
+            
+            # Vérifier s'il y a déjà des slots
+            cursor.execute('SELECT COUNT(*) as count FROM slots')
+            result = cursor.fetchone()
+            
+            # Initialiser les slots seulement si la table est vide
+            if result['count'] == 0:
+                start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = datetime(2025, 3, 25)
+                
+                current_date = start_date
+                while current_date <= end_date:
+                    if (current_date >= datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) 
+                        and current_date.weekday() != 6):
+                        current_time = datetime.strptime(f"{current_date.strftime('%Y-%m-%d')} 09:30", "%Y-%m-%d %H:%M")
+                        end_time = datetime.strptime(f"{current_date.strftime('%Y-%m-%d')} 16:30", "%Y-%m-%d %H:%M")
+                        
+                        while current_time <= end_time:
+                            cursor.execute('''
+                                INSERT INTO slots (date, time, available) 
+                                VALUES (%s, %s, %s)
+                            ''', (
+                                current_time.strftime("%Y-%m-%d"),
+                                current_time.strftime("%H:%M"),
+                                True
+                            ))
+                            current_time += timedelta(minutes=30)
+                    
+                    current_date += timedelta(days=1)
+                
+                connection.commit()
+                print("Slots initialisés avec succès")
+            else:
+                print("Les slots existent déjà, pas de réinitialisation nécessaire")
+            
     except Exception as e:
         print(f"Erreur lors de l'initialisation de la base de données : {e}")
+    finally:
+        connection.close()
 
 def get_available_slots_for_date(date):
     try:
-        response = supabase_client.table('slots') \
-            .select('time') \
-            .eq('date', date) \
-            .eq('available', True) \
-            .execute()
-        return [slot['time'] for slot in response.data]
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            query = '''
+                SELECT time 
+                FROM slots 
+                WHERE date = %s AND available = TRUE
+                ORDER BY time
+            '''
+            print(f"Exécution de la requête : {query} avec date = {date}")
+            
+            cursor.execute(query, (date,))
+            slots = cursor.fetchall()
+            print(f"Slots bruts trouvés : {slots}")
+            
+            # Convertir les timedelta en heures formatées
+            result = []
+            for slot in slots:
+                seconds = slot['time'].total_seconds()
+                hours = int(seconds // 3600)
+                minutes = int((seconds % 3600) // 60)
+                formatted_time = f"{hours:02d}:{minutes:02d}"
+                result.append(formatted_time)
+            
+            print(f"Résultat final : {result}")
+            return result
+            
     except Exception as e:
-        print(f"Erreur lors de la récupération des slots : {e}")
+        print(f"Erreur détaillée lors de la récupération des slots : {str(e)}")
+        print(f"Type de l'erreur : {type(e)}")
+        import traceback
+        traceback.print_exc()
         return []
+    finally:
+        connection.close()
 
 @app.route('/')
 def home():
@@ -209,7 +273,11 @@ def ar():
 def get_slots():
     date = request.args.get('date')
     lang = request.args.get('lang', 'fr')
+    print(f"Requête reçue pour la date : {date}")  # Debug
+    
     slots = get_available_slots_for_date(date)
+    print(f"Slots retournés : {slots}")  # Debug
+    
     return render_template('slots.html', slots=slots, t=translations[lang])
 
 def generate_verification_code():
@@ -383,36 +451,58 @@ def verify_code():
         return render_template('error.html', t=translations[lang], lang=lang)
 
     try:
-        # Mettre à jour le slot comme non disponible
-        supabase_client.table('slots') \
-            .update({'available': False}) \
-            .eq('date', verification_data['date']) \
-            .eq('time', verification_data['time']) \
-            .execute()
-        
-        # Sauvegarder le rendez-vous
-        supabase_client.table('appointments') \
-            .insert({
-                'date': verification_data['date'],
-                'time': verification_data['time'],
-                'name': verification_data['name'],
-                'phone': verification_data['phone'],
-                'email': verification_data['email'],
-                'jlpt_level': verification_data['jlpt_level']
-            }) \
-            .execute()
-        
-        # Générer et envoyer le PDF de confirmation
-        pdf_buffer = generate_appointment_pdf(verification_data, lang)
-        send_confirmation_email(verification_data['email'], pdf_buffer, lang)
-        
-        session.pop('verification_data', None)
-        
-        # Afficher la page de succès
-        return render_template('success.html', t=translations[lang], lang=lang)
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Vérifier si le créneau est toujours disponible
+            cursor.execute('''
+                SELECT available 
+                FROM slots 
+                WHERE date = %s AND time = %s
+            ''', (verification_data['date'], verification_data['time']))
+            
+            slot = cursor.fetchone()
+            if not slot or not slot['available']:
+                return render_template('error.html', 
+                    message="Ce créneau n'est plus disponible", 
+                    t=translations[lang], 
+                    lang=lang)
+
+            # Mettre à jour le slot comme non disponible
+            cursor.execute('''
+                UPDATE slots 
+                SET available = FALSE 
+                WHERE date = %s AND time = %s
+            ''', (verification_data['date'], verification_data['time']))
+            
+            # Sauvegarder le rendez-vous
+            cursor.execute('''
+                INSERT INTO appointments (date, time, name, phone, email, jlpt_level)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (
+                verification_data['date'],
+                verification_data['time'],
+                verification_data['name'],
+                verification_data['phone'],
+                verification_data['email'],
+                verification_data['jlpt_level']
+            ))
+            
+            connection.commit()
+            
+            # Générer et envoyer le PDF de confirmation
+            pdf_buffer = generate_appointment_pdf(verification_data, lang)
+            send_confirmation_email(verification_data['email'], pdf_buffer, lang)
+            
+            session.pop('verification_data', None)
+            
+            return render_template('success.html', t=translations[lang], lang=lang)
+            
     except Exception as e:
         print(f"Erreur : {e}")
+        connection.rollback()  # Annuler les changements en cas d'erreur
         return render_template('error.html', t=translations[lang], lang=lang)
+    finally:
+        connection.close()
 
 @app.route('/change-language')
 def change_language():
@@ -424,17 +514,23 @@ def change_language():
 @app.route('/get-unavailable-dates')
 def get_unavailable_dates():
     try:
-        response = supabase_client.table('slots') \
-            .select('date') \
-            .eq('available', False) \
-            .execute()
-        return jsonify([slot['date'] for slot in response.data])
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            cursor.execute('''
+                SELECT DISTINCT date 
+                FROM slots 
+                WHERE available = FALSE
+            ''')
+            dates = cursor.fetchall()
+            return jsonify([date['date'].strftime("%Y-%m-%d") for date in dates])
     except Exception as e:
         print(f"Erreur lors de la récupération des dates indisponibles : {e}")
         return jsonify([])
+    finally:
+        connection.close()
 
-# Initialiser la base de données au démarrage de l'application
-initialize_supabase_slots()
+# Initialiser la base de données au démarrage
+initialize_mysql_database()
 
 # Au démarrage de l'application
 if __name__ == '__main__':
