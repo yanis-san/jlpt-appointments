@@ -236,7 +236,7 @@ def get_available_slots_for_date(date):
         connection = get_db_connection()
         with connection.cursor() as cursor:
             # Arrondir à la demi-heure suivante
-            now = get_current_time()  # Utiliser la nouvelle fonction
+            now = get_current_time()
             minutes = now.minute
             if minutes < 30:
                 next_slot = now.replace(minute=30, second=0, microsecond=0)
@@ -246,12 +246,20 @@ def get_available_slots_for_date(date):
             current_date = now.date()
             query_date = datetime.strptime(date, '%Y-%m-%d').date()
 
+            # Déterminer l'heure maximale selon le jour de la semaine
+            weekday = query_date.weekday()  # 0 = Lundi, 1 = Mardi, etc.
+            if weekday == 2 or weekday == 3:  # Mercredi (2) et Jeudi (3)
+                max_time = '13:30:00'
+            else:
+                max_time = '15:30:00'
+
             query = '''
                 SELECT s.time, COUNT(a.id) as registration_count
                 FROM slots s
                 LEFT JOIN appointments a ON s.date = a.date AND s.time = a.time
                 WHERE s.date = %s
                 AND (s.date > %s OR (s.date = %s AND s.time >= %s))
+                AND TIME(s.time) <= %s
                 GROUP BY s.time
                 ORDER BY s.time
             '''
@@ -260,7 +268,8 @@ def get_available_slots_for_date(date):
                 date,
                 current_date,
                 current_date,
-                next_slot.time()
+                next_slot.time(),
+                max_time
             ))
             
             slots = cursor.fetchall()
