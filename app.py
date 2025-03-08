@@ -68,6 +68,8 @@ translations = {
         'email_body': "Votre code de vérification pour le rendez-vous JLPT est : {code}\n\nCe code est valable pendant 10 minutes.",
         'email_error': "Erreur lors de l'envoi de l'email. Veuillez réessayer.",
         'redirecting': "Redirection dans 3 secondes...",
+        'available_slots': "Horaires disponibles",
+        'no_available_slots': "Aucun horaire disponible",
     },
     'en': {
         'title': "Appointment booking for JLPT exam registration",
@@ -92,6 +94,8 @@ translations = {
         'email_body': "Your verification code for JLPT appointment is: {code}\n\nThis code is valid for 10 minutes.",
         'email_error': "Error sending email. Please try again.",
         'redirecting': "Redirecting in 3 seconds...",
+        'available_slots': "Available time slots",
+        'no_available_slots': "No available time slots",
     },
     'ja': {
         'title': "JLPT試験申し込みの予約",
@@ -116,6 +120,8 @@ translations = {
         'email_body': "JLPTの予約認証コード: {code}\n\nこのコードは10分間有効です。",
         'email_error': "メール送信エラー。もう一度お試しください。",
         'redirecting': "3秒後にリダイレクトします...",
+        'available_slots': "利用可能な時間帯",
+        'no_available_slots': "利用可能な時間帯がありません",
     },
     'ar': {
         'title': "حجز موعد لتسجيل اختبار JLPT",
@@ -140,6 +146,8 @@ translations = {
         'email_body': "رمز التحقق الخاص بموعد JLPT هو: {code}\n\nهذا الرمز صالح لمدة 10 دقائق.",
         'email_error': "خطأ في إرسال البريد الإلكتروني. يرجى المحاولة مرة أخرى.",
         'redirecting': "إعادة توجيه في 3 ثوان...",
+        'available_slots': "المواعيد المتاحة",
+        'no_available_slots': "لا توجد مواعيد متاحة",
     }
 }
 
@@ -220,20 +228,28 @@ def get_available_slots_for_date(date):
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            # Modifié pour retourner tous les créneaux avec leur nombre d'inscriptions
+            current_time = datetime.now().time()
+            current_date = datetime.now().date()
+            query_date = datetime.strptime(date, '%Y-%m-%d').date()
+
             query = '''
                 SELECT s.time, COUNT(a.id) as registration_count
                 FROM slots s
                 LEFT JOIN appointments a ON s.date = a.date AND s.time = a.time
                 WHERE s.date = %s
+                AND (s.date > %s OR (s.date = %s AND s.time > %s))
                 GROUP BY s.time
                 ORDER BY s.time
             '''
-            print(f"Exécution de la requête : {query} avec date = {date}")
             
-            cursor.execute(query, (date,))
+            cursor.execute(query, (
+                date,
+                current_date,
+                current_date,
+                current_time
+            ))
+            
             slots = cursor.fetchall()
-            print(f"Slots bruts trouvés : {slots}")
             
             # Convertir les timedelta en heures formatées
             result = []
@@ -244,14 +260,10 @@ def get_available_slots_for_date(date):
                 formatted_time = f"{hours:02d}:{minutes:02d}"
                 result.append(formatted_time)
             
-            print(f"Résultat final : {result}")
             return result
             
     except Exception as e:
         print(f"Erreur détaillée lors de la récupération des slots : {str(e)}")
-        print(f"Type de l'erreur : {type(e)}")
-        import traceback
-        traceback.print_exc()
         return []
     finally:
         connection.close()
@@ -264,13 +276,22 @@ def index():
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
+            current_time = datetime.now().time()
+            current_date = datetime.now().date()
+            
             cursor.execute('''
                 SELECT s.date, s.time, COUNT(a.id) as registration_count
                 FROM slots s
                 LEFT JOIN appointments a ON s.date = a.date AND s.time = a.time
+                WHERE (s.date > %s OR (s.date = %s AND s.time > %s))
                 GROUP BY s.date, s.time
                 ORDER BY s.date, s.time
-            ''')
+            ''', (
+                current_date,
+                current_date,
+                current_time
+            ))
+            
             time_slots = cursor.fetchall()
             
             lang = get_language()
@@ -308,12 +329,18 @@ def ar():
 def get_slots():
     date = request.args.get('date')
     lang = request.args.get('lang', 'fr')
-    print(f"Requête reçue pour la date : {date}")  # Debug
+    print(f"Langue reçue : {lang}")  # Debug
     
     slots = get_available_slots_for_date(date)
-    print(f"Slots retournés : {slots}")  # Debug
     
-    return render_template('slots.html', slots=slots, t=translations[lang])
+    # S'assurer que la langue existe dans les traductions
+    if lang not in translations:
+        lang = 'fr'
+        
+    return render_template('slots.html', 
+                         slots=slots, 
+                         t=translations[lang],
+                         lang=lang)
 
 def generate_verification_code():
     return str(random.randint(100000, 999999))

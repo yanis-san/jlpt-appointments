@@ -1,8 +1,8 @@
 <!-- Ajout de debug -->
 {% if slots %}
-    <div>Nombre de slots : {{ slots|length }}</div>
+    <div class="text-gray-700 mb-4">{{ t.available_slots }}</div>
 {% else %}
-    <div>Aucun slot disponible</div>
+    <div class="text-gray-700 mb-4">{{ t.no_available_slots }}</div>
 {% endif %}
 
 <div>
