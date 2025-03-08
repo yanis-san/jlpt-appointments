@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, make_response
 from flask_mail import Mail, Message
 from datetime import datetime, timedelta
 from flask_cors import CORS
@@ -220,11 +220,14 @@ def get_available_slots_for_date(date):
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
+            # Modifié pour retourner tous les créneaux avec leur nombre d'inscriptions
             query = '''
-                SELECT time 
-                FROM slots 
-                WHERE date = %s AND available = TRUE
-                ORDER BY time
+                SELECT s.time, COUNT(a.id) as registration_count
+                FROM slots s
+                LEFT JOIN appointments a ON s.date = a.date AND s.time = a.time
+                WHERE s.date = %s
+                GROUP BY s.time
+                ORDER BY s.time
             '''
             print(f"Exécution de la requête : {query} avec date = {date}")
             
@@ -253,9 +256,37 @@ def get_available_slots_for_date(date):
     finally:
         connection.close()
 
+def get_language():
+    return request.args.get('lang', 'fr')
+
 @app.route('/')
-def home():
-    return redirect('/fr')  # Redirection par défaut vers la version française
+def index():
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            cursor.execute('''
+                SELECT s.date, s.time, COUNT(a.id) as registration_count
+                FROM slots s
+                LEFT JOIN appointments a ON s.date = a.date AND s.time = a.time
+                GROUP BY s.date, s.time
+                ORDER BY s.date, s.time
+            ''')
+            time_slots = cursor.fetchall()
+            
+            lang = get_language()
+            return render_template('index.html', 
+                                 time_slots=time_slots, 
+                                 t=translations[lang],
+                                 lang=lang)
+    except Exception as e:
+        print(f"Erreur lors de la récupération des créneaux : {e}")
+        lang = get_language()
+        return render_template('error.html', 
+                             message="Erreur lors du chargement des créneaux",
+                             t=translations[lang],
+                             lang=lang)
+    finally:
+        connection.close()
 
 @app.route('/fr')
 def fr():
@@ -444,40 +475,18 @@ def verify_code():
     
     verification_data = session.get('verification_data')
     if not verification_data:
-        return render_template('error.html', t=translations[lang], lang=lang)
+        return redirect(url_for('fr'))
 
     if datetime.now() > datetime.fromisoformat(verification_data['expires']):
         session.pop('verification_data', None)
-        return render_template('error.html', t=translations[lang], lang=lang)
+        return redirect(url_for('fr'))
 
     if submitted_code != verification_data['code']:
-        return render_template('error.html', t=translations[lang], lang=lang)
+        return redirect(url_for('fr'))
 
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            # Vérifier si le créneau est toujours disponible
-            cursor.execute('''
-                SELECT available 
-                FROM slots 
-                WHERE date = %s AND time = %s
-            ''', (verification_data['date'], verification_data['time']))
-            
-            slot = cursor.fetchone()
-            if not slot or not slot['available']:
-                return render_template('error.html', 
-                    message="Ce créneau n'est plus disponible", 
-                    t=translations[lang], 
-                    lang=lang)
-
-            # Mettre à jour le slot comme non disponible
-            cursor.execute('''
-                UPDATE slots 
-                SET available = FALSE 
-                WHERE date = %s AND time = %s
-            ''', (verification_data['date'], verification_data['time']))
-            
-            # Sauvegarder le rendez-vous
             cursor.execute('''
                 INSERT INTO appointments (date, time, name, phone, email, jlpt_level)
                 VALUES (%s, %s, %s, %s, %s, %s)
@@ -498,12 +507,12 @@ def verify_code():
             
             session.pop('verification_data', None)
             
-            return render_template('success.html', t=translations[lang], lang=lang)
+            return redirect(url_for('fr'))
             
     except Exception as e:
         print(f"Erreur : {e}")
-        connection.rollback()  # Annuler les changements en cas d'erreur
-        return render_template('error.html', t=translations[lang], lang=lang)
+        connection.rollback()
+        return redirect(url_for('fr'))
     finally:
         connection.close()
 
@@ -516,21 +525,43 @@ def change_language():
 
 @app.route('/get-unavailable-dates')
 def get_unavailable_dates():
-    try:
+    # Cette route peut maintenant retourner une liste vide 
+    # puisque tous les créneaux sont toujours disponibles
+    return jsonify([])
+
+@app.route('/submit_registration', methods=['POST'])
+def submit_registration():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        phone = request.form.get('phone')
+        time_slot = request.form.get('time')
+        
+        # Créer une nouvelle inscription
+        new_registration = {
+            'name': name,
+            'email': email,
+            'phone': phone,
+            'time': time_slot
+        }
+        
+        # Ajouter l'inscription à la base de données
         connection = get_db_connection()
         with connection.cursor() as cursor:
             cursor.execute('''
-                SELECT DISTINCT date 
-                FROM slots 
-                WHERE available = FALSE
-            ''')
-            dates = cursor.fetchall()
-            return jsonify([date['date'].strftime("%Y-%m-%d") for date in dates])
-    except Exception as e:
-        print(f"Erreur lors de la récupération des dates indisponibles : {e}")
-        return jsonify([])
-    finally:
-        connection.close()
+                INSERT INTO appointments (date, time, name, phone, email, jlpt_level)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (
+                time_slot,
+                time_slot,
+                name,
+                phone,
+                email,
+                'N'  # Assuming a default level
+            ))
+            connection.commit()
+        
+        return redirect(url_for('success'))
 
 # Initialiser la base de données au démarrage
 initialize_mysql_database()
