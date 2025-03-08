@@ -14,9 +14,16 @@ from reportlab.lib.utils import ImageReader
 from dotenv import load_dotenv
 from flask_wtf.csrf import CSRFProtect
 import pymysql.cursors
+import pytz  # Ajoutez cette import
 
 app = Flask(__name__)
 CORS(app)
+
+# Définir le fuseau horaire pour l'Algérie
+TIMEZONE = pytz.timezone('Africa/Algiers')
+
+def get_current_time():
+    return datetime.now(TIMEZONE).replace(tzinfo=None)
 
 # Charger les configurations depuis .env
 load_dotenv()
@@ -229,7 +236,7 @@ def get_available_slots_for_date(date):
         connection = get_db_connection()
         with connection.cursor() as cursor:
             # Arrondir à la demi-heure suivante
-            now = datetime.now()
+            now = get_current_time()  # Utiliser la nouvelle fonction
             minutes = now.minute
             if minutes < 30:
                 next_slot = now.replace(minute=30, second=0, microsecond=0)
