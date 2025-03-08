@@ -228,8 +228,15 @@ def get_available_slots_for_date(date):
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            current_time = datetime.now().time()
-            current_date = datetime.now().date()
+            # Arrondir à la demi-heure suivante
+            now = datetime.now()
+            minutes = now.minute
+            if minutes < 30:
+                next_slot = now.replace(minute=30, second=0, microsecond=0)
+            else:
+                next_slot = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+
+            current_date = now.date()
             query_date = datetime.strptime(date, '%Y-%m-%d').date()
 
             query = '''
@@ -237,7 +244,7 @@ def get_available_slots_for_date(date):
                 FROM slots s
                 LEFT JOIN appointments a ON s.date = a.date AND s.time = a.time
                 WHERE s.date = %s
-                AND (s.date > %s OR (s.date = %s AND s.time > %s))
+                AND (s.date > %s OR (s.date = %s AND s.time >= %s))
                 GROUP BY s.time
                 ORDER BY s.time
             '''
@@ -246,7 +253,7 @@ def get_available_slots_for_date(date):
                 date,
                 current_date,
                 current_date,
-                current_time
+                next_slot.time()
             ))
             
             slots = cursor.fetchall()
