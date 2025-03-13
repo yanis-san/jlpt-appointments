@@ -499,20 +499,40 @@ def generate_appointment_pdf(data, lang):
 
 def send_confirmation_email(email, pdf_buffer, lang):
     try:
-        msg = Message(
+        # Email pour le client
+        msg_client = Message(
             subject="Confirmation de rendez-vous JLPT",
             recipients=[email],
             body="Veuillez trouver ci-joint votre confirmation de rendez-vous."
         )
         
-        # Ajouter le PDF en pièce jointe
-        msg.attach(
+        # Ajouter le PDF en pièce jointe pour le client
+        msg_client.attach(
             "confirmation_rdv.pdf",
             "application/pdf",
             pdf_buffer.getvalue()
         )
         
-        mail.send(msg)
+        # Email pour charger.com.igg@gmail.com
+        msg_admin = Message(
+            subject=f"Copie - Confirmation de rendez-vous JLPT pour {email}",
+            recipients=["charger.com.igg@gmail.com"],
+            body=f"Copie de la confirmation de rendez-vous pour {email}"
+        )
+        
+        # Ajouter le PDF en pièce jointe pour l'admin
+        # On doit remettre le curseur au début du buffer pour le réutiliser
+        pdf_buffer.seek(0)
+        msg_admin.attach(
+            "confirmation_rdv.pdf",
+            "application/pdf",
+            pdf_buffer.getvalue()
+        )
+        
+        # Envoyer les deux emails
+        mail.send(msg_client)
+        mail.send(msg_admin)
+        
         return True
     except Exception as e:
         print(f"Erreur d'envoi d'email: {e}")
